@@ -1,0 +1,25 @@
+# Environnements virtuels Python (JAMAIS sur Git)
+venv/
+env/
+.venv/
+
+# Caches Python
+__pycache__/
+*.py[cod]
+
+# Dépendances Node / React (JAMAIS sur Git)
+frontend/node_modules/
+frontend/dist/
+
+# Fichiers volumineux UNSW (bloqués par GitHub si > 100 Mo)
+data/UNSW_NB15_training-set.csv
+data/UNSW_NB15_testing-set.csv
+
+# Base de données locale de test
+*.db
+*.sqlite3
+
+# Fichiers de configuration IDE et OS
+.vscode/
+.DS_Store
+Thumbs.db

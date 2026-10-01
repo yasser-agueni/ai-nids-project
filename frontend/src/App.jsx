@@ -1,0 +1,323 @@
+import React, { useState, useEffect } from "react";
+import { 
+  ShieldAlert, 
+  ShieldCheck, 
+  Activity, 
+  UploadCloud, 
+  Filter, 
+  RefreshCw,
+  AlertTriangle
+} from "lucide-react";
+import { 
+  PieChart, 
+  Pie, 
+  Cell, 
+  ResponsiveContainer, 
+  Tooltip, 
+  Legend 
+} from "recharts";
+
+const API_BASE = "http://127.0.0.1:8000/api";
+
+const SEVERITY_COLORS = {
+  Critique: "#ef4444",
+  Haute: "#f97316",
+  Moyenne: "#eab308"
+};
+
+export default function App() {
+  const [stats, setStats] = useState({ totals: {}, by_severity: {}, by_status: {} });
+  const [alerts, setAlerts] = useState([]);
+  const [selectedSeverity, setSelectedSeverity] = useState("");
+  const [selectedStatus, setSelectedStatus] = useState("");
+  const [file, setFile] = useState(null);
+  const [uploading, setUploading] = useState(false);
+  const [uploadResult, setUploadResult] = useState(null);
+  const [errorMessage, setErrorMessage] = useState("");
+
+  const fetchStats = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/dashboard-stats`);
+      if (res.ok) {
+        const data = await res.json();
+        setStats(data);
+      }
+    } catch (err) {
+      console.error("Erreur stats:", err);
+    }
+  };
+
+  const fetchAlerts = async () => {
+    try {
+      let url = `${API_BASE}/alerts?limit=50`;
+      if (selectedSeverity) url += `&severity=${selectedSeverity}`;
+      if (selectedStatus) url += `&status=${selectedStatus}`;
+      const res = await fetch(url);
+      if (res.ok) {
+        const data = await res.json();
+        setAlerts(data);
+      }
+    } catch (err) {
+      console.error("Erreur alerts:", err);
+    }
+  };
+
+  useEffect(() => {
+    fetchStats();
+    fetchAlerts();
+  }, [selectedSeverity, selectedStatus]);
+
+  const handleUpload = async (e) => {
+    e.preventDefault();
+    if (!file) return;
+
+    setUploading(true);
+    setErrorMessage("");
+    setUploadResult(null);
+
+    const formData = new FormData();
+    formData.append("file", file);
+
+    try {
+      const res = await fetch(`${API_BASE}/predict-file`, {
+        method: "POST",
+        body: formData
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        setErrorMessage(data.detail || "Erreur lors de l'analyse.");
+      } else {
+        setUploadResult(data);
+        fetchStats();
+        fetchAlerts();
+      }
+    } catch (err) {
+      setErrorMessage("Impossible de contacter le serveur backend.");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleStatusChange = async (alertId, newStatus) => {
+    try {
+      const res = await fetch(`${API_BASE}/alerts/${alertId}/status`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: newStatus })
+      });
+      if (res.ok) {
+        fetchStats();
+        fetchAlerts();
+      }
+    } catch (err) {
+      console.error("Erreur update status:", err);
+    }
+  };
+
+  const pieData = Object.keys(stats.by_severity || {}).map((key) => ({
+    name: key,
+    value: stats.by_severity[key]
+  }));
+
+  return (
+    <div style={{ padding: "2rem", maxWidth: "1200px", margin: "0 auto" }}>
+      {/* Header */}
+      <header style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "2rem" }}>
+        <div>
+          <h1 style={{ display: "flex", alignItems: "center", gap: "0.75rem", fontSize: "1.8rem", color: "#38bdf8" }}>
+            <Activity /> AI-Powered NIDS Dashboard
+          </h1>
+          <p style={{ color: "#94a3b8", marginTop: "0.25rem" }}>
+            Surveillance et détection d'intrusions réseau par Random Forest
+          </p>
+        </div>
+        <button 
+          onClick={() => { fetchStats(); fetchAlerts(); }}
+          style={{ display: "flex", alignItems: "center", gap: "0.5rem", background: "#1e293b", border: "1px solid #334155", color: "#f8fafc", padding: "0.6rem 1rem", borderRadius: "8px", cursor: "pointer" }}
+        >
+          <RefreshCw size={16} /> Actualiser
+        </button>
+      </header>
+
+      {/* KPI Cards */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: "1.2rem", marginBottom: "2rem" }}>
+        <div style={{ background: "#1e293b", padding: "1.5rem", borderRadius: "10px", border: "1px solid #334155" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", color: "#94a3b8" }}>
+            <span>Total Flux Analysés</span>
+            <Activity size={20} color="#38bdf8" />
+          </div>
+          <p style={{ fontSize: "2rem", fontWeight: "bold", marginTop: "0.5rem", color: "#f8fafc" }}>
+            {stats.totals?.total_flows || 0}
+          </p>
+        </div>
+
+        <div style={{ background: "#1e293b", padding: "1.5rem", borderRadius: "10px", border: "1px solid #334155" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", color: "#94a3b8" }}>
+            <span>Trafic Normal</span>
+            <ShieldCheck size={20} color="#22c55e" />
+          </div>
+          <p style={{ fontSize: "2rem", fontWeight: "bold", marginTop: "0.5rem", color: "#22c55e" }}>
+            {stats.totals?.normal_flows || 0}
+          </p>
+        </div>
+
+        <div style={{ background: "#1e293b", padding: "1.5rem", borderRadius: "10px", border: "1px solid #334155" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", color: "#94a3b8" }}>
+            <span>Alertes Détectées</span>
+            <ShieldAlert size={20} color="#ef4444" />
+          </div>
+          <p style={{ fontSize: "2rem", fontWeight: "bold", marginTop: "0.5rem", color: "#ef4444" }}>
+            {stats.totals?.alert_flows || 0}
+          </p>
+        </div>
+      </div>
+
+      {/* Section Import CSV & Graphique */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1.5rem", marginBottom: "2rem" }}>
+        {/* Module Upload */}
+        <div style={{ background: "#1e293b", padding: "1.5rem", borderRadius: "10px", border: "1px solid #334155" }}>
+          <h2 style={{ fontSize: "1.2rem", marginBottom: "1rem", display: "flex", alignItems: "center", gap: "0.5rem" }}>
+            <UploadCloud color="#38bdf8" /> Importer un flux réseau (CSV)
+          </h2>
+          <form onSubmit={handleUpload}>
+            <input 
+              type="file" 
+              accept=".csv" 
+              onChange={(e) => setFile(e.target.files[0])}
+              style={{ display: "block", width: "100%", padding: "0.6rem", background: "#0f172a", border: "1px dashed #475569", borderRadius: "6px", color: "#cbd5e1", marginBottom: "1rem" }}
+            />
+            <button 
+              type="submit" 
+              disabled={!file || uploading}
+              style={{ background: "#0284c7", color: "#fff", border: "none", padding: "0.7rem 1.2rem", borderRadius: "6px", cursor: file && !uploading ? "pointer" : "not-allowed", width: "100%", fontWeight: "600" }}
+            >
+              {uploading ? "Analyse en cours par l'IA..." : "Lancer l'analyse"}
+            </button>
+          </form>
+
+          {errorMessage && (
+            <div style={{ marginTop: "1rem", padding: "0.8rem", background: "rgba(239, 68, 68, 0.1)", border: "1px solid #ef4444", borderRadius: "6px", color: "#fca5a5", display: "flex", gap: "0.5rem" }}>
+              <AlertTriangle size={18} /> {errorMessage}
+            </div>
+          )}
+
+          {uploadResult && (
+            <div style={{ marginTop: "1rem", padding: "0.8rem", background: "rgba(34, 197, 94, 0.1)", border: "1px solid #22c55e", borderRadius: "6px", color: "#86efac" }}>
+              Analyse terminée : <strong>{uploadResult.alert_flows}</strong> alertes sur <strong>{uploadResult.total_flows}</strong> flux ({uploadResult.threat_percentage}% menaces).
+            </div>
+          )}
+        </div>
+
+        {/* Graphique de répartition */}
+        <div style={{ background: "#1e293b", padding: "1.5rem", borderRadius: "10px", border: "1px solid #334155" }}>
+          <h2 style={{ fontSize: "1.2rem", marginBottom: "1rem" }}>Répartition des Sévérités</h2>
+          {pieData.length > 0 ? (
+            <div style={{ width: "100%", height: 220 }}>
+              <ResponsiveContainer>
+                <PieChart>
+                  <Pie data={pieData} cx="50%" cy="50%" innerRadius={50} outerRadius={80} dataKey="value">
+                    {pieData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={SEVERITY_COLORS[entry.name] || "#94a3b8"} />
+                    ))}
+                  </Pie>
+                  <Tooltip />
+                  <Legend />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+          ) : (
+            <p style={{ color: "#64748b", textAlign: "center", marginTop: "4rem" }}>Aucune donnée d'alerte pour le moment.</p>
+          )}
+        </div>
+      </div>
+
+      {/* Tableau des alertes */}
+      <div style={{ background: "#1e293b", padding: "1.5rem", borderRadius: "10px", border: "1px solid #334155" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem" }}>
+          <h2 style={{ fontSize: "1.2rem", display: "flex", alignItems: "center", gap: "0.5rem" }}>
+            <Filter size={18} /> Journal des Alertes Récents
+          </h2>
+          <div style={{ display: "flex", gap: "1rem" }}>
+            <select 
+              value={selectedSeverity} 
+              onChange={(e) => setSelectedSeverity(e.target.value)}
+              style={{ background: "#0f172a", border: "1px solid #334155", color: "#e2e8f0", padding: "0.4rem 0.8rem", borderRadius: "6px" }}
+            >
+              <option value="">Toutes sévérités</option>
+              <option value="Critique">Critique</option>
+              <option value="Haute">Haute</option>
+              <option value="Moyenne">Moyenne</option>
+            </select>
+            <select 
+              value={selectedStatus} 
+              onChange={(e) => setSelectedStatus(e.target.value)}
+              style={{ background: "#0f172a", border: "1px solid #334155", color: "#e2e8f0", padding: "0.4rem 0.8rem", borderRadius: "6px" }}
+            >
+              <option value="">Tous statuts</option>
+              <option value="Nouvelle">Nouvelle</option>
+              <option value="Examinée">Examinée</option>
+              <option value="Clôturée">Clôturée</option>
+            </select>
+          </div>
+        </div>
+
+        <table style={{ width: "100%", borderCollapse: "collapse", textAlign: "left", fontSize: "0.9rem" }}>
+          <thead>
+            <tr style={{ borderBottom: "1px solid #334155", color: "#94a3b8" }}>
+              <th style={{ padding: "0.75rem" }}>ID</th>
+              <th style={{ padding: "0.75rem" }}>Horodatage</th>
+              <th style={{ padding: "0.75rem" }}>Index Flux</th>
+              <th style={{ padding: "0.75rem" }}>Confiance</th>
+              <th style={{ padding: "0.75rem" }}>Sévérité</th>
+              <th style={{ padding: "0.75rem" }}>Statut</th>
+              <th style={{ padding: "0.75rem" }}>Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            {alerts.length > 0 ? (
+              alerts.map((al) => (
+                <tr key={al.id} style={{ borderBottom: "1px solid #1e293b", background: "rgba(15, 23, 42, 0.4)" }}>
+                  <td style={{ padding: "0.75rem" }}>#{al.id}</td>
+                  <td style={{ padding: "0.75rem" }}>{al.timestamp}</td>
+                  <td style={{ padding: "0.75rem" }}>Flux {al.flow_index}</td>
+                  <td style={{ padding: "0.75rem", fontWeight: "600" }}>{al.confidence}%</td>
+                  <td style={{ padding: "0.75rem" }}>
+                    <span style={{ 
+                      padding: "0.2rem 0.6rem", 
+                      borderRadius: "12px", 
+                      fontSize: "0.75rem",
+                      fontWeight: "bold",
+                      background: `${SEVERITY_COLORS[al.severity]}22`,
+                      color: SEVERITY_COLORS[al.severity]
+                    }}>
+                      {al.severity}
+                    </span>
+                  </td>
+                  <td style={{ padding: "0.75rem" }}>{al.status}</td>
+                  <td style={{ padding: "0.75rem" }}>
+                    <select
+                      value={al.status}
+                      onChange={(e) => handleStatusChange(al.id, e.target.value)}
+                      style={{ background: "#0f172a", border: "1px solid #475569", color: "#cbd5e1", borderRadius: "4px", padding: "0.2rem 0.4rem" }}
+                    >
+                      <option value="Nouvelle">Nouvelle</option>
+                      <option value="Examinée">Examinée</option>
+                      <option value="Clôturée">Clôturée</option>
+                    </select>
+                  </td>
+                </tr>
+              ))
+            ) : (
+              <tr>
+                <td colSpan="7" style={{ textAlign: "center", padding: "2rem", color: "#64748b" }}>
+                  Aucune alerte trouvée pour ces critères.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
